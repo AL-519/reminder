@@ -1,0 +1,14 @@
+
+function grantAccessTo(...permittedRoles){
+    return (req, res, next) => {
+        if(!req.user || !permittedRoles.includes(req.user.role)){
+            return res.status(403).json({
+                success: false,
+                message: "Forbidden: You do not have sufficient privileges to perform this action."
+            });
+        }
+        next();
+    };
+}
+
+module.exports = {grantAccessTo}
