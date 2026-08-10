@@ -1,15 +1,90 @@
 const User = require('../models/user.model');
 const Event = require('../models/event.model');
+const nodemailer = require('nodemailer');
+
+const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: false,
+    auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+    },
+});
 
 async function dispatchNotification(channel, message){
-    if(channel.channelType === 'email'){
-        console.log(`[Email] Dispatching to ${channel.target}:\n${message}\n`);
+    const {channelType, target} = channel;
+
+    if(channelType === 'email'){
+        await transporter.sendMail({
+            from: `"Event Digest" <${process.env.SMTP_USER}>`,
+            to: target,
+            subject: "Your Event Digest Notification",
+            text: message
+        });
     }
-    else if(channel.channelType === 'discord'){
-        console.log(`[Discord] POST to webhook ${channel.target}:\n${message}\n`);
+
+    else if(channelType === 'telegram'){
+        const botToken = process.env.TELEGRAM_BOT_TOKEN;
+        const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type' : 'application/json'},
+            body: JSON.stringify({
+                chat_id: target,
+                text: message
+            })
+        });
+
+        const data = await response.json();
+        if(!data.ok){
+            throw new Error(`Telegram API Error: ${data.description}`);
+        }
     }
-    else if(channel.channelType === 'telegram'){
-        console.log(`[Telegram] POST to chat ${channel.target}:\n${message}\n`);
+
+    else if(channelType === 'discord'){
+        if(target.startsWith('http')){ //Webhook url
+            const response = await fetch(target, {
+                method: 'POST',
+                headers: {'Content-Type' : 'application/json'},
+                body: JSON.stringify({content: message})
+            });
+            if(!response.ok){
+                throw new Error(`Discord Webhook failed with status: ${response.status}`);
+            }
+        }
+
+        else{//direct BOT message
+            const botToken = process.env.DISCORD_BOT_TOKEN;
+
+            const dmRes = await fetch('https://discord.com/api/v10/users/@me/channels',{
+                method: 'POST',
+                headers:{
+                    'Authorization': `BOT ${botToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({recipient_id: target})
+            });
+            const dmChabbel = await dmRes.json();
+
+            if(!dmChannel.id){
+                throw new Error("Could not create Discord DM channel with provided User ID.");
+            }
+
+            const msgRes = await fetch(`https://discord.com/api/v10/channels/${dmChannel.id}/messages`, {
+                method: 'POST',
+                headers:{
+                    'Authorization': `BOT ${botToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({content: message})
+            });
+
+            if(!msgRes.ok){
+                throw new Error(`Discord DM failed with status: ${msgRes.status}`);
+            }
+        }
     }
 }
 
@@ -45,7 +120,7 @@ async function dispatchHourlyDigest(req, res){
 
                 const activeEvents = await Event.find({
                     _id: {$in: user.subscriptions},
-                    endTime: {$gte: new Date()}
+                    endTime: {$gte: now}
                 });
 
                 if (activeEvents.length === 0){

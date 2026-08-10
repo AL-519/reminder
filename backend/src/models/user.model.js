@@ -69,7 +69,7 @@ userSchema.pre('save', async function (next) {
     if(!this.isModified('password')) return next;
     try{
         const salt = await bcrypt.genSalt(11);
-        this.passwprd = await bcrypt.hash(this.password, salt);
+        this.password = await bcrypt.hash(this.password, salt);
         next();
     }
     catch(err){
