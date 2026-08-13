@@ -72,18 +72,18 @@ async function login(req, res, next){
     try{
     const { email, phoneNumber, password} = req.body;
     if((!email && !phoneNumber) || !password){
-        return res.status(400).json({message:"Required credentials missing"});
+        return res.status(400).json({success: false, message:"Required credentials missing"});
     }
 
     const queryCondition = email ? {email} : {phoneNumber};
     const user = await User.findOne(queryCondition);
-    if(!user){
-        return res.status(401).json({message:"Invalid Credentials"});
+    if(!user || !(await user.comparePassword(password))){
+        return res.status(401).json({success: false, message:"Invalid Credentials"});
     } 
     
     const isPasswordValid = await user.comparePassword(password);
     if(!isPasswordValid){
-        return res.status(401).json({message: "Invalid Credentials"});
+        return res.status(401).json({success: false, message: "Invalid Credentials"});
     }
 
     const token = signToken(user);

@@ -36,13 +36,6 @@ const userSchema = new mongoose.Schema({
         default: 'user',
         required: true
     },
-    notificationUtcHour:{
-        type: Number,
-        default: null,
-        min: 0,
-        max: 23,
-        index: true
-    },
     notificationChannels:[
         {
             channelType:{
@@ -54,6 +47,13 @@ const userSchema = new mongoose.Schema({
                 type: String,
                 required: true,
                 trim: true
+            }, 
+            notificationUtcHour:{
+                type: Number,
+                default: null,
+                min: 0,
+                max: 23,
+                index: true
             }
         }
     ],
@@ -66,7 +66,7 @@ const userSchema = new mongoose.Schema({
 },{timestamps: true});
 
 userSchema.pre('save', async function (next) {
-    if(!this.isModified('password')) return next;
+    if(!this.isModified('password')) return next();
     try{
         const salt = await bcrypt.genSalt(11);
         this.password = await bcrypt.hash(this.password, salt);

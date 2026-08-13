@@ -1,21 +1,10 @@
 const User = require('../models/user.model');
 const pendingVerification = require('../models/pending-verification.model');
+const notificationService = require('../services/notification.service');
 
 const generateOTP = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
 };
-
-async function dispatchOTP(channelType, target, otpCode){
-    if(channelType === 'email'){
-        console.log(`[Email Service] Sending OTP ${otpCode} to ${target}`);
-    }
-    else if(channelType === 'discord'){
-        console.log(`[Discord Webhook] Firing OTP ${otpCode} to webhook: ${target}`);
-    }
-    else if(channelType === 'telegram'){
-        console.log(`[Telegram Bot] Sending OTP ${otpCode} to handle/chat: ${target}`);
-    }
-}
 
 async function requestChannelVerification(req, res, next){
     try{
@@ -58,8 +47,14 @@ async function requestChannelVerification(req, res, next){
             otpCode
         });
 
-        await dispatchOTP(channelType, target.trim(), otpCode);
-        
+        const otpMessage = `Your verification code is: ${otpCode}. This code will expire in 15 minutes.`;
+        await notificationService.sendNotification({
+            channelType,
+            target: target.trim(),
+            subject: "Notification Channel Verification Code",
+            message: otpMessage
+        });
+
         return res.status(200).json({
             success: true,
             message: `Verification code sent to your ${channelType}. Code expires in 15 minutes.`
@@ -72,7 +67,7 @@ async function requestChannelVerification(req, res, next){
 
 async function confirmChannelVerification(req, res, next){
     try{
-        const {channelType, target, otpCode} = req.body;
+        const {channelType, target, otpCode, notificationUtcHour = 9} = req.body;
         const userId = req.user.id;
 
         if(!channelType || !target || !otpCode){
@@ -102,7 +97,8 @@ async function confirmChannelVerification(req, res, next){
                 $addToSet:{
                     notificationChannels: {
                         channelType,
-                        target: target.trim()
+                        target: target.trim(),
+                        notificationUtcHour
                     }
                 }
             },
@@ -126,27 +122,41 @@ async function confirmChannelVerification(req, res, next){
 
 async function updateNotificationTimezone(req, res, next){
     try{
-        const {notificationUtcHour} = req.body;
+        const {channelType, notificationUtcHour} = req.body;
         const userId = req.user.id;
 
-        if(notificationUtcHour !== null && (!Number.isInteger(notificationUtcHour) || notificationUtcHour < 0 || notificationUtcHour >23)){
+        if(!channelType || notificationUtcHour === undefined){
+            return res.status(400).json({
+                success: false,
+                message: "Channel type and notification UTC hour are required."
+            });
+        }
+
+        if(notificationUtcHour !== null && (!Number.isInteger(notificationUtcHour) || notificationUtcHour < 0 || notificationUtcHour > 23)){
             return res.status(400).json({
                 success: false,
                 message: "Notification UTC hour must be null or an integer between 0 and 23."
             });
         }
 
-        const updatedUser = await User.findByIdAndUpdate(
-            userId,
-            {notificationUtcHour},
+        const updatedUser = await User.findOneAndUpdate(
+            {_id: userId, "notificationChannels.channelType": channelType},
+            {$set: {"notificationChannels.$.notificationUtcHour": notificationUtcHour}},
             {new: true}
         );
+
+        if(!updatedUser){
+            return res.status(404).json({
+                success: false,
+                message: "Specified notification channel not found on this account."
+            });
+        }
 
         return res.status(200).json({
             success: true,
             message: "Notification time preferences updated successfully.",
             data:{
-                notificationUtcHour: updatedUser.notificationUtcHour
+                notificationChannels: updatedUser.notificationChannels
             }
         });
     }
@@ -157,13 +167,20 @@ async function updateNotificationTimezone(req, res, next){
 
 async function removeChannel(req, res, next){
     try{
-        const {channelType, target} = req.body;
+        const {channelType} = req.body;
         const userId = req.user.id;
 
-        if(!channelType || !target){
+        if(!channelType){
             return res.status(400).json({
                 success: false,
-                message: "Channel type and target are required to remove a channel."
+                message: "Channel type is required to remove a channel."
+            });
+        }
+
+        if(!['email', 'discord', 'telegram'].includes(channelType)){
+            return res.status(400).json({
+                success: false,
+                message: "Invalid channel type provided."
             });
         }
 
@@ -171,7 +188,7 @@ async function removeChannel(req, res, next){
             userId,
             {
                 $pull: {
-                    notificationChannels: {channelType, target: target.trim()}
+                    notificationChannels: {channelType}
                 }
             },
             {new: true}
@@ -179,7 +196,7 @@ async function removeChannel(req, res, next){
 
         return res.status(200).json({
             success: true,
-            message: "Notification channel removed successfully.",
+            message: `${channelType} channel removed successfully.`,
             data: {
                 notificationChannels: updatedUser.notificationChannels
             }

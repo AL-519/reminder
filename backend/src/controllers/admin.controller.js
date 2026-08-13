@@ -103,6 +103,7 @@ async function deleteCategory(req, res, next){
 
         if(itemIds.length > 0){
             await Event.deleteMany({itemId: {$in: itemIds}});
+            await Item.deleteMany({categoryId : id});
         }
 
         await Category.findByIdAndDelete(id);
@@ -193,7 +194,7 @@ async function updateItem(req, res, next){
 
         return res.status(200).json({
             success: true,
-            message: "Item uploaded successfully.",
+            message: "Item updated successfully.",
             data: {item}
         });
     }

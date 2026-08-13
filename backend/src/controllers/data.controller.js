@@ -47,7 +47,7 @@ async function getItemsByCategory(req, res, next){
             baseQuery = baseQuery.select('displayName slug _id');
         }
 
-        const features = new Pagination(Item.find({categoryId: category._id}), req.query)
+        const features = new Pagination(baseQuery, req.query)
         .search(['displayName', 'slug'])
         .filter()
         .sort()

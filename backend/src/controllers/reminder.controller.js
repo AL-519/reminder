@@ -21,7 +21,7 @@ async function createPersonalReminder(req, res, next) {
 
         return res.status(201).json({
             success: true,
-            message: "Peronal reminder created successfully.",
+            message: "Personal reminder created successfully.",
             data: {reminder}
         });
     }
